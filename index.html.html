@@ -1,0 +1,1767 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>個人理財預算 Dashboard</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0/dist/chartjs-plugin-datalabels.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+  :root {
+    --bg-primary:    #0f1117;
+    --bg-card:       #1a1d2e;
+    --bg-card2:      #232640;
+    --bg-input:      #2a2d45;
+    --accent:        #4f8ef7;
+    --accent2:       #7c5cfc;
+    --green:         #22c993;
+    --red:           #ff5e7d;
+    --yellow:        #f9c84a;
+    --text-primary:  #e8ecf4;
+    --text-secondary:#8a90a8;
+    --border:        #2e3250;
+    --font-main: 'Segoe UI', 'PingFang TC', 'Microsoft JhengHei', sans-serif;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    font-family: var(--font-main);
+    min-height: 100vh;
+  }
+
+  /* ── TOPBAR ── */
+  .topbar {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 14px 28px;
+    background: var(--bg-card);
+    border-bottom: 1px solid var(--border);
+    position: sticky; top: 0; z-index: 100;
+  }
+  .topbar-title { font-size: 1.15rem; font-weight: 700; letter-spacing:.5px; color: var(--text-primary); }
+  .topbar-title span { color: var(--accent); }
+  .topbar-actions { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+
+  /* ── BUTTONS ── */
+  .btn {
+    padding: 7px 16px; border-radius: 6px; border: none; cursor: pointer;
+    font-size: .82rem; font-weight: 600; font-family: var(--font-main);
+    transition: opacity .15s, background .15s;
+  }
+  .btn:hover { opacity: .85; }
+  .btn-primary { background: var(--accent); color: #fff; }
+  .btn-success { background: var(--green); color: #0f1117; }
+  .btn-danger  { background: var(--red);   color: #fff; }
+  .btn-outline {
+    background: transparent; color: var(--accent);
+    border: 1px solid var(--accent);
+  }
+  .btn-sm { padding: 4px 11px; font-size: .77rem; }
+
+  /* ── FILTERS ── */
+  .filter-bar {
+    display: flex; gap: 10px; align-items: center; flex-wrap: wrap;
+    padding: 12px 28px;
+    background: var(--bg-card2);
+    border-bottom: 1px solid var(--border);
+  }
+  .filter-bar label { font-size: .78rem; color: var(--text-secondary); }
+  select, input[type=text], input[type=date], input[type=number] {
+    background: var(--bg-input); color: var(--text-primary);
+    border: 1px solid var(--border); border-radius: 5px;
+    padding: 5px 10px; font-size: .82rem; font-family: var(--font-main);
+    outline: none;
+  }
+  select:focus, input:focus { border-color: var(--accent); }
+
+  /* ── MAIN GRID ── */
+  .main { padding: 20px 28px; display: flex; flex-direction: column; gap: 20px; }
+
+  /* ── KPI CARDS ── */
+  .kpi-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 14px; }
+  .kpi-card {
+    background: var(--bg-card); border: 1px solid var(--border);
+    border-radius: 10px; padding: 18px 20px;
+    display: flex; flex-direction: column; gap: 6px;
+    position: relative; overflow: hidden;
+  }
+  .kpi-card::before {
+    content:''; position:absolute; top:0; left:0; right:0; height:3px;
+    background: var(--kpi-color, var(--accent));
+  }
+  .kpi-label { font-size: .75rem; color: var(--text-secondary); text-transform: uppercase; letter-spacing:.5px; }
+  .kpi-value { font-size: 1.65rem; font-weight: 700; }
+  .kpi-sub   { font-size: .75rem; color: var(--text-secondary); }
+
+  /* ── GAUGE ROW ── */
+  .gauge-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px,1fr)); gap: 14px; }
+  .gauge-card {
+    background: var(--bg-card); border: 1px solid var(--border);
+    border-radius: 10px; padding: 18px; text-align: center;
+  }
+  .gauge-title { font-size: .85rem; color: var(--text-secondary); margin-bottom: 10px; font-weight: 600; }
+  .gauge-wrap  { position: relative; width: 160px; margin: 0 auto; }
+  .gauge-center {
+    position: absolute; top: 58%; left: 50%; transform: translate(-50%, -50%);
+    font-size: 1.35rem; font-weight: 700;
+  }
+
+  /* ── CHART ROW ── */
+  .chart-row { display: grid; grid-template-columns: 1.5fr 1fr; gap: 14px; }
+  @media (max-width: 860px) { .chart-row { grid-template-columns: 1fr; } }
+  .chart-card {
+    background: var(--bg-card); border: 1px solid var(--border);
+    border-radius: 10px; padding: 18px;
+  }
+  .chart-card-title {
+    font-size: .88rem; font-weight: 700; color: var(--text-secondary);
+    text-transform: uppercase; letter-spacing: .5px;
+    margin-bottom: 14px;
+  }
+  .chart-inner { position: relative; height: 240px; }
+
+  /* ── TABLE SECTION ── */
+  .table-section { background: var(--bg-card); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+  .table-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 14px 20px;
+    border-bottom: 1px solid var(--border);
+  }
+  .table-title { font-size: .88rem; font-weight: 700; text-transform: uppercase; letter-spacing: .5px; color: var(--text-secondary); }
+  .table-wrap { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: .82rem; }
+  thead th {
+    background: var(--bg-card2);
+    color: var(--text-secondary); font-weight: 600;
+    text-align: left; padding: 10px 14px;
+    cursor: pointer; user-select: none; white-space: nowrap;
+  }
+  thead th:hover { color: var(--text-primary); }
+  tbody tr { border-bottom: 1px solid var(--border); transition: background .1s; }
+  tbody tr:hover { background: var(--bg-card2); }
+  tbody td { padding: 9px 14px; }
+  .tag {
+    display: inline-block; padding: 2px 8px; border-radius: 20px;
+    font-size: .72rem; font-weight: 600;
+  }
+  .tag-income  { background: rgba(34,201,147,.18); color: var(--green); }
+  .tag-expense { background: rgba(255,94,125,.18);  color: var(--red); }
+  .tag-over    { background: rgba(249,200,74,.18);  color: var(--yellow); }
+  .tag-ok      { background: rgba(79,142,247,.18);  color: var(--accent); }
+
+  /* ── ADD ENTRY MODAL ── */
+  .overlay {
+    display: none; position: fixed; inset: 0;
+    background: rgba(0,0,0,.65); z-index: 200;
+    align-items: center; justify-content: center;
+  }
+  .overlay.open { display: flex; }
+  .modal {
+    background: var(--bg-card); border: 1px solid var(--border);
+    border-radius: 12px; padding: 28px; width: 380px; max-width: 95vw;
+  }
+  .modal-title { font-size: 1rem; font-weight: 700; margin-bottom: 18px; }
+  .form-group { display: flex; flex-direction: column; gap: 5px; margin-bottom: 14px; }
+  .form-group label { font-size: .78rem; color: var(--text-secondary); }
+  .form-group input, .form-group select { width: 100%; }
+  .modal-actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 20px; }
+
+  /* ── GS MODAL ── */
+  .gs-modal { width: 440px; }
+  .gs-step { margin-bottom: 14px; }
+  .gs-mode-btn {
+    flex: 1; padding: 8px; border-radius: 6px; border: 1px solid var(--border);
+    background: var(--bg-input); color: var(--text-secondary);
+    cursor: pointer; font-size: .8rem; font-family: var(--font-main);
+    transition: all .15s;
+  }
+  .gs-mode-btn.active {
+    background: var(--accent); color: #fff; border-color: var(--accent);
+  }
+  .gs-mode-btn:hover:not(.active) { border-color: var(--accent); color: var(--text-primary); }
+  .gs-step-label { font-size: .78rem; font-weight: 700; color: var(--text-secondary); text-transform: uppercase; letter-spacing: .4px; margin-bottom: 8px; }
+  .gs-permission-box { background: var(--bg-card2); border: 1px solid var(--border); border-radius: 8px; padding: 12px 14px; }
+  .gs-input-row { display: flex; gap: 8px; align-items: flex-end; }
+  .gs-input-row .form-group { flex: 1; }
+  .info-box {
+    background: var(--bg-card2); border: 1px solid var(--border);
+    border-radius: 6px; padding: 10px 12px; font-size: .78rem;
+    color: var(--text-secondary); line-height: 1.6; margin-top: 10px;
+  }
+  .info-box code { background: var(--bg-input); padding: 1px 5px; border-radius: 3px; color: var(--accent); font-family: monospace; }
+
+  /* ── STATUS BAR ── */
+  .status-bar {
+    display: flex; gap: 10px; align-items: center; flex-wrap: wrap;
+    padding: 8px 28px;
+    background: var(--bg-card2); border-top: 1px solid var(--border);
+    font-size: .75rem; color: var(--text-secondary);
+  }
+  .status-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+  .dot-green { background: var(--green); }
+  .dot-yellow { background: var(--yellow); }
+  .dot-red { background: var(--red); }
+  .dot-grey { background: var(--text-secondary); }
+
+  /* NAV TABS */
+  .nav-tabs {
+    display: flex; gap: 4px; padding: 10px 28px;
+    background: var(--bg-card); border-bottom: 1px solid var(--border);
+  }
+  .nav-tab {
+    padding: 7px 20px; border-radius: 6px; border: none;
+    background: transparent; color: var(--text-secondary);
+    cursor: pointer; font-size: .85rem; font-weight: 600;
+    font-family: var(--font-main); transition: all .15s;
+  }
+  .nav-tab:hover { color: var(--text-primary); background: var(--bg-card2); }
+  .nav-tab.active { background: var(--accent); color: #fff; }
+
+  .empty-state {
+    text-align: center; padding: 40px; color: var(--text-secondary);
+    font-size: .9rem;
+  }
+  .empty-state .icon { font-size: 2rem; margin-bottom: 8px; }
+  .pagination { display: flex; gap: 6px; align-items: center; padding: 12px 20px; justify-content: flex-end; }
+  .page-btn {
+    background: var(--bg-input); border: 1px solid var(--border);
+    color: var(--text-primary); border-radius: 5px; padding: 4px 10px;
+    font-size: .78rem; cursor: pointer;
+  }
+  .page-btn.active { background: var(--accent); border-color: var(--accent); }
+  .page-btn:hover:not(.active) { border-color: var(--accent); }
+  .page-info { font-size: .78rem; color: var(--text-secondary); }
+</style>
+</head>
+<body>
+
+<!-- TOP BAR -->
+<div class="topbar">
+  <div class="topbar-title">💰 個人理財 <span>Budget Dashboard</span></div>
+  <div class="topbar-actions">
+    <button class="btn btn-outline" onclick="openGSModal()">🔗 Google Sheets 串接</button>
+    <label class="btn btn-outline" style="cursor:pointer;">
+      📂 上傳檔案
+      <input type="file" id="fileInput" accept=".xlsx,.csv" style="display:none" onchange="handleFileUpload(event)">
+    </label>
+    <button class="btn btn-success" onclick="openAddModal()">＋ 新增記錄</button>
+    <button class="btn btn-outline" id="btnDisconnect" style="display:none;border-color:var(--red);color:var(--red)" onclick="disconnectGS()">✕ 中斷連線</button>
+  </div>
+</div>
+
+<!-- NAV TABS -->
+<div class="nav-tabs">
+  <button class="nav-tab active" id="tabIncome" onclick="switchTab('income')">📊 收支分析</button>
+  <button class="nav-tab" id="tabAsset" onclick="switchTab('asset')">🏦 資產負債</button>
+</div>
+
+<!-- FILTER BAR -->
+<div class="filter-bar">
+  <label>年份</label>
+  <select id="fYear" onchange="applyFilters()"><option value="">全部</option></select>
+  <label>月份</label>
+  <select id="fMonth" onchange="applyFilters()">
+    <option value="">全部</option>
+    <option>1</option><option>2</option><option>3</option><option>4</option>
+    <option>5</option><option>6</option><option>7</option><option>8</option>
+    <option>9</option><option>10</option><option>11</option><option>12</option>
+  </select>
+  <label>類別</label>
+  <select id="fCat" onchange="applyFilters()"><option value="">全部</option></select>
+  <label>類型</label>
+  <select id="fType" onchange="applyFilters()">
+    <option value="">全部</option>
+    <option value="收入">收入</option>
+    <option value="支出">支出</option>
+  </select>
+  <label>超支</label>
+  <select id="fOver" onchange="applyFilters()">
+    <option value="">全部</option>
+    <option value="yes">超支</option>
+    <option value="no">未超支</option>
+  </select>
+  <button class="btn btn-sm btn-outline" onclick="resetFilters()">重設篩選</button>
+</div>
+
+<!-- MAIN CONTENT -->
+<div class="main">
+
+  <!-- KPI -->
+  <div class="kpi-row">
+    <div class="kpi-card" style="--kpi-color:var(--green)">
+      <div class="kpi-label">總收入</div>
+      <div class="kpi-value" id="kpiIncome">$0</div>
+      <div class="kpi-sub" id="kpiIncomeCount">0 筆</div>
+    </div>
+    <div class="kpi-card" style="--kpi-color:var(--red)">
+      <div class="kpi-label">總支出</div>
+      <div class="kpi-value" id="kpiExpense">$0</div>
+      <div class="kpi-sub" id="kpiExpenseCount">0 筆</div>
+    </div>
+    <div class="kpi-card" style="--kpi-color:var(--accent)">
+      <div class="kpi-label">淨收支差異</div>
+      <div class="kpi-value" id="kpiBalance">$0</div>
+      <div class="kpi-sub" id="kpiBalanceSub">收入 − 支出</div>
+    </div>
+    <div class="kpi-card" style="--kpi-color:var(--yellow)">
+      <div class="kpi-label">超支類別數</div>
+      <div class="kpi-value" id="kpiOver">0</div>
+      <div class="kpi-sub" id="kpiOverSub">項類別超出預算</div>
+    </div>
+    <div class="kpi-card" style="--kpi-color:var(--accent2)">
+      <div class="kpi-label">總預算</div>
+      <div class="kpi-value" id="kpiBudget">$0</div>
+      <div class="kpi-sub" id="kpiBudgetSub">已設定預算</div>
+    </div>
+  </div>
+
+  <!-- GAUGES -->
+  <div class="gauge-row">
+    <div class="gauge-card">
+      <div class="gauge-title">預算使用率</div>
+      <div class="gauge-wrap">
+        <canvas id="gaugeBudget" width="160" height="100"></canvas>
+        <div class="gauge-center" id="gaugeBudgetVal" style="color:var(--accent)">0%</div>
+      </div>
+    </div>
+    <div class="gauge-card">
+      <div class="gauge-title">支出佔收入比</div>
+      <div class="gauge-wrap">
+        <canvas id="gaugeRatio" width="160" height="100"></canvas>
+        <div class="gauge-center" id="gaugeRatioVal" style="color:var(--green)">0%</div>
+      </div>
+    </div>
+    <div class="gauge-card">
+      <div class="gauge-title">儲蓄率</div>
+      <div class="gauge-wrap">
+        <canvas id="gaugeSavings" width="160" height="100"></canvas>
+        <div class="gauge-center" id="gaugeSavingsVal" style="color:var(--green)">0%</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- BAR + LINE -->
+  <div class="chart-row">
+    <div class="chart-card">
+      <div class="chart-card-title">各類別：預算 vs 實際支出</div>
+      <div class="chart-inner"><canvas id="barChart"></canvas></div>
+    </div>
+    <div class="chart-card">
+      <div class="chart-card-title">支出類別分佈</div>
+      <div class="chart-inner"><canvas id="donutChart"></canvas></div>
+    </div>
+  </div>
+  <div class="chart-card">
+    <div class="chart-card-title">每月收支趨勢</div>
+    <div class="chart-inner" style="height:200px"><canvas id="lineChart"></canvas></div>
+  </div>
+
+  <!-- TABLE -->
+  <div class="table-section">
+    <div class="table-header">
+      <div class="table-title">收支明細</div>
+      <div style="display:flex;gap:8px;align-items:center">
+        <input type="text" id="searchInput" placeholder="搜尋備註 / 類別…" style="width:180px" oninput="applyFilters()">
+      </div>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th onclick="sortTable('date')">日期 ↕</th>
+            <th onclick="sortTable('type')">類型 ↕</th>
+            <th onclick="sortTable('category')">類別 ↕</th>
+            <th onclick="sortTable('amount')">金額 ↕</th>
+            <th onclick="sortTable('budget')">預算 ↕</th>
+            <th onclick="sortTable('status')">狀態 ↕</th>
+            <th>備註</th>
+            <th>操作</th>
+          </tr>
+        </thead>
+        <tbody id="tableBody"></tbody>
+      </table>
+    </div>
+    <div id="emptyState" class="empty-state" style="display:none">
+      <div class="icon">📊</div>
+      <div>尚無資料，請上傳檔案或新增記錄</div>
+    </div>
+    <div class="pagination" id="pagination"></div>
+  </div>
+</div>
+
+<!-- ASSET SECTION -->
+<div id="assetSection" style="display:none">
+  <div class="main">
+
+    <!-- 資產 KPI -->
+    <div class="kpi-row">
+      <div class="kpi-card" style="--kpi-color:var(--green)">
+        <div class="kpi-label">總資產</div>
+        <div class="kpi-value" id="aKpiTotal">$0</div>
+        <div class="kpi-sub" id="aKpiTotalSub">流動＋投資＋固定</div>
+      </div>
+      <div class="kpi-card" style="--kpi-color:var(--accent)">
+        <div class="kpi-label">流動資產</div>
+        <div class="kpi-value" id="aKpiLiquid">$0</div>
+        <div class="kpi-sub" id="aKpiLiquidPct">佔總資產 0%</div>
+      </div>
+      <div class="kpi-card" style="--kpi-color:var(--accent2)">
+        <div class="kpi-label">投資資產</div>
+        <div class="kpi-value" id="aKpiInvest">$0</div>
+        <div class="kpi-sub" id="aKpiInvestPct">佔總資產 0%</div>
+      </div>
+      <div class="kpi-card" style="--kpi-color:var(--yellow)">
+        <div class="kpi-label">固定資產</div>
+        <div class="kpi-value" id="aKpiFixed">$0</div>
+        <div class="kpi-sub" id="aKpiFixedPct">佔總資產 0%</div>
+      </div>
+      <div class="kpi-card" style="--kpi-color:var(--red)">
+        <div class="kpi-label">總負債</div>
+        <div class="kpi-value" id="aKpiDebt">$0</div>
+        <div class="kpi-sub" id="aKpiDebtSub">0 項負債</div>
+      </div>
+      <div class="kpi-card" style="--kpi-color:var(--green)">
+        <div class="kpi-label">淨資產</div>
+        <div class="kpi-value" id="aKpiNet">$0</div>
+        <div class="kpi-sub">總資產 − 總負債</div>
+      </div>
+    </div>
+
+    <!-- 資產健康指標 -->
+    <div class="gauge-row">
+      <div class="gauge-card">
+        <div class="gauge-title">負債比率</div>
+        <div class="gauge-wrap">
+          <canvas id="gaugeDebtRatio" width="160" height="100"></canvas>
+          <div class="gauge-center" id="gaugeDebtRatioVal" style="color:var(--green)">0%</div>
+        </div>
+        <div style="font-size:.72rem;color:var(--text-secondary);margin-top:6px">負債 ÷ 總資產</div>
+      </div>
+      <div class="gauge-card">
+        <div class="gauge-title">流動比率</div>
+        <div class="gauge-wrap">
+          <canvas id="gaugeLiquidRatio" width="160" height="100"></canvas>
+          <div class="gauge-center" id="gaugeLiquidRatioVal" style="color:var(--accent)">0%</div>
+        </div>
+        <div style="font-size:.72rem;color:var(--text-secondary);margin-top:6px">流動資產 ÷ 總負債</div>
+      </div>
+      <div class="gauge-card">
+        <div class="gauge-title">投資佔比</div>
+        <div class="gauge-wrap">
+          <canvas id="gaugeInvestRatio" width="160" height="100"></canvas>
+          <div class="gauge-center" id="gaugeInvestRatioVal" style="color:var(--accent2)">0%</div>
+        </div>
+        <div style="font-size:.72rem;color:var(--text-secondary);margin-top:6px">投資資產 ÷ 總資產</div>
+      </div>
+    </div>
+
+    <!-- 圖表區 -->
+    <div class="chart-row">
+      <div class="chart-card">
+        <div class="chart-card-title">資產分佈</div>
+        <div class="chart-inner"><canvas id="assetDonut"></canvas></div>
+      </div>
+      <div class="chart-card">
+        <div class="chart-card-title">資產 vs 負債</div>
+        <div class="chart-inner"><canvas id="assetBar"></canvas></div>
+      </div>
+    </div>
+
+    <!-- 明細表 -->
+    <div class="table-section">
+      <div class="table-header">
+        <div class="table-title">資產負債明細</div>
+        <div style="display:flex;gap:8px">
+          <select id="aFilterType" onchange="renderAssetTable()" style="font-size:.8rem">
+            <option value="">全部</option>
+            <option value="流動資產">流動資產</option>
+            <option value="投資資產">投資資產</option>
+            <option value="固定資產">固定資產</option>
+            <option value="負債">負債</option>
+          </select>
+          <button class="btn btn-success btn-sm" onclick="openAddAssetModal()">＋ 新增</button>
+        </div>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>類型</th>
+              <th>類別</th>
+              <th>名稱</th>
+              <th>金額</th>
+              <th>備註</th>
+              <th>操作</th>
+            </tr>
+          </thead>
+          <tbody id="assetTableBody"></tbody>
+        </table>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ADD ASSET MODAL -->
+<div class="overlay" id="addAssetModal">
+  <div class="modal">
+    <div class="modal-title">＋ 新增資產／負債</div>
+    <div class="form-group">
+      <label>類型</label>
+      <select id="aEntryType">
+        <option value="流動資產">流動資產</option>
+        <option value="投資資產">投資資產</option>
+        <option value="固定資產">固定資產</option>
+        <option value="負債">負債</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label>類別</label>
+      <input type="text" id="aEntryCat" placeholder="例：現金、股票、房貸…">
+    </div>
+    <div class="form-group">
+      <label>名稱</label>
+      <input type="text" id="aEntryName" placeholder="例：台新帳戶、台積電、國泰房貸…">
+    </div>
+    <div class="form-group">
+      <label>金額（元）</label>
+      <input type="number" id="aEntryAmount" placeholder="0" min="0">
+    </div>
+    <div class="form-group">
+      <label>備註</label>
+      <input type="text" id="aEntryNote" placeholder="選填">
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-outline" onclick="closeAddAssetModal()">取消</button>
+      <button class="btn btn-success" onclick="addAssetEntry()">儲存</button>
+    </div>
+  </div>
+</div>
+
+<!-- STATUS BAR -->
+<div class="status-bar">
+  <span class="status-dot" id="statusDot" style="background:var(--text-secondary)"></span>
+  <span id="statusText">尚未載入資料</span>
+  <span style="margin-left:auto">最後更新：<span id="lastUpdate">—</span></span>
+</div>
+
+<!-- ADD ENTRY MODAL -->
+<div class="overlay" id="addModal">
+  <div class="modal">
+    <div class="modal-title">＋ 新增收支記錄</div>
+    <div class="form-group">
+      <label>日期</label>
+      <input type="date" id="entryDate">
+    </div>
+    <div class="form-group">
+      <label>類型</label>
+      <select id="entryType">
+        <option value="收入">收入</option>
+        <option value="支出">支出</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label>類別</label>
+      <input type="text" id="entryCat" placeholder="例：薪資、餐飲、交通…" list="catList">
+      <datalist id="catList"></datalist>
+    </div>
+    <div class="form-group">
+      <label>金額（元）</label>
+      <input type="number" id="entryAmount" placeholder="0" min="0">
+    </div>
+    <div class="form-group">
+      <label>預算（元，選填）</label>
+      <input type="number" id="entryBudget" placeholder="0" min="0">
+    </div>
+    <div class="form-group">
+      <label>備註</label>
+      <input type="text" id="entryNote" placeholder="選填">
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-outline" onclick="closeAddModal()">取消</button>
+      <button class="btn btn-success" onclick="addEntry()">儲存</button>
+    </div>
+  </div>
+</div>
+
+<!-- GOOGLE SHEETS MODAL -->
+<div class="overlay" id="gsModal">
+  <div class="modal gs-modal">
+    <div class="modal-title">🔗 Google Sheets 串接設定</div>
+
+    <div class="gs-step">
+      <div class="gs-step-label">📌 步驟 1｜確認試算表已公開（若尚未設定）</div>
+      <div class="gs-permission-box">
+        <ol style="margin:0 0 10px 16px;font-size:.82rem;line-height:2">
+          <li>在 Google Sheets 點右上角 <strong>「共用」</strong></li>
+          <li>「一般存取權」改為 <strong>「知道連結的人」</strong></li>
+          <li>角色選 <strong>「檢視者」</strong> 後儲存</li>
+        </ol>
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:.82rem;padding:6px 0">
+          <input type="checkbox" id="gsPermCheck" onchange="onPermCheck()" style="width:15px;height:15px;accent-color:var(--green)">
+          <span>✅ 我已完成設定，試算表已公開可檢視</span>
+        </label>
+      </div>
+    </div>
+
+    <div class="gs-step" id="gsStep2">
+      <div class="gs-step-label">步驟 2｜貼上試算表連結</div>
+      <!-- Mode toggle -->
+      <div style="display:flex;gap:8px;margin-bottom:14px">
+        <button class="gs-mode-btn active" id="modeGas" onclick="setGsMode('gas')">
+          ⚡ Apps Script（推薦）
+        </button>
+        <button class="gs-mode-btn" id="modePub" onclick="setGsMode('pub')">
+          📄 發布到網路 CSV
+        </button>
+      </div>
+
+      <!-- Apps Script mode -->
+      <div id="panelGas">
+        <div class="form-group" style="margin-bottom:0">
+          <label style="font-size:.78rem;color:var(--text-secondary)">Apps Script 部署網址</label>
+          <input type="text" id="gsUrl" placeholder="https://script.google.com/macros/s/…/exec" style="width:100%">
+        </div>
+        <div class="info-box" style="margin-top:8px;font-size:.76rem">
+          📋 尚未設定？請點下方「查看設定步驟」
+        </div>
+        <button class="btn btn-outline btn-sm" style="margin-top:6px;width:100%" onclick="toggleGasGuide()">📖 查看 Apps Script 設定步驟</button>
+        <div id="gasGuide" style="display:none;margin-top:10px;background:var(--bg-card2);border:1px solid var(--border);border-radius:8px;padding:12px;font-size:.78rem;line-height:2">
+          <strong>設定步驟（約 5 分鐘）：</strong><br>
+          1. 打開你的 Google Sheets<br>
+          2. 上方選單 → <strong>「擴充功能」→「Apps Script」</strong><br>
+          3. 刪除預設程式碼，貼上下載的 <code>Code.gs</code> 內容<br>
+          4. 按 <strong>Ctrl+S</strong> 儲存<br>
+          5. 右上角 → <strong>「部署」→「新增部署作業」</strong><br>
+          6. 類型：<strong>網頁應用程式</strong><br>
+          7. 執行身分：<strong>我</strong>　存取權：<strong>所有人</strong><br>
+          8. 按部署 → 授權 → 複製網址貼到上方
+        </div>
+      </div>
+
+      <!-- Pub CSV mode -->
+      <div id="panelPub" style="display:none">
+        <div class="form-group" style="margin-bottom:8px">
+          <label style="font-size:.78rem;color:var(--text-secondary)">「發布到網路」CSV 連結</label>
+          <input type="text" id="gsPubUrl" placeholder="https://docs.google.com/spreadsheets/d/…/pub?…output=csv" style="width:100%">
+        </div>
+        <div class="info-box" style="font-size:.76rem">
+          檔案 → 共用 → <strong>發布到網路</strong> → 選工作表 → CSV → 發布 → 複製連結
+        </div>
+      </div>
+    </div>
+
+    <div id="gsError" style="display:none;margin-top:10px;padding:10px 12px;border-radius:6px;
+      font-size:.8rem;line-height:1.7;background:rgba(255,94,125,.1);
+      border:1px solid rgba(255,94,125,.35);color:#ff8fa3"></div>
+
+    <div id="gsSuccess" style="display:none;margin-top:10px;padding:10px 12px;border-radius:6px;
+      font-size:.8rem;line-height:1.7;background:rgba(34,201,147,.1);
+      border:1px solid rgba(34,201,147,.35);color:#22c993"></div>
+
+    <div class="info-box" style="margin-top:10px">
+      💡 <strong>載入後無反應？</strong> 幾乎都是步驟 1 尚未完成。請確認試算表分享權限已改為「知道連結的人－檢視者」，再重新點載入。
+    </div>
+
+    <div class="modal-actions">
+      <button class="btn btn-outline" onclick="closeGSModal()">取消</button>
+      <button class="btn btn-primary" id="gsLoadBtn" onclick="loadGoogleSheets()">🔄 載入資料</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ───────────────────────────────────────────
+// STATE
+// ───────────────────────────────────────────
+let allData = []; // { date, type, category, amount, budget, note }
+let filteredData = [];
+let sortKey = 'date';
+let sortDir = -1;
+let currentPage = 1;
+const PAGE_SIZE = 15;
+
+// Chart instances
+let chartBar, chartDonut, chartLine, chartGaugeBudget, chartGaugeRatio, chartGaugeSavings;
+
+// ───────────────────────────────────────────
+// DEMO DATA (preloaded so dashboard isn't empty)
+// ───────────────────────────────────────────
+function loadDemoData() {
+  const now = new Date();
+  const y = now.getFullYear();
+  const m = String(now.getMonth()+1).padStart(2,'0');
+  const demo = [
+    [y+'-'+m+'-01','收入','薪資',   65000,0,    '本月薪資'],
+    [y+'-'+m+'-03','收入','兼職',   8000, 0,    '教學收入'],
+    [y+'-'+m+'-05','支出','餐飲',   4200, 5000, '外食＋超市'],
+    [y+'-'+m+'-07','支出','交通',   1800, 2000, '捷運月票＋油費'],
+    [y+'-'+m+'-08','支出','房租',   18000,18000,'固定房租'],
+    [y+'-'+m+'-10','支出','娛樂',   3200, 2500, '電影＋Netflix'],
+    [y+'-'+m+'-12','支出','醫療',   950,  2000, '健檢費用'],
+    [y+'-'+m+'-15','支出','購物',   5600, 4000, '衣物+電子'],
+    [y+'-'+m+'-18','支出','通訊',   599,  700,  '網路費'],
+    [y+'-'+m+'-20','支出','教育',   2200, 3000, '線上課程'],
+    [y+'-'+m+'-22','支出','保險',   3000, 3000, '壽險保費'],
+    [y+'-'+m+'-25','支出','餐飲',   1800, 0,    '聚餐'],
+    // Previous months for trend
+    [y+'-'+(String(now.getMonth()).padStart(2,'0')||'12')+'-01','收入','薪資',64000,0,''],
+    [y+'-'+(String(now.getMonth()).padStart(2,'0')||'12')+'-05','支出','餐飲',3800,5000,''],
+    [y+'-'+(String(now.getMonth()).padStart(2,'0')||'12')+'-08','支出','房租',18000,18000,''],
+    [y+'-'+(String(now.getMonth()).padStart(2,'0')||'12')+'-15','支出','購物',2900,4000,''],
+  ];
+  allData = demo.map(r=>({
+    date:r[0], type:r[1], category:r[2],
+    amount:r[3], budget:r[4], note:r[5]
+  }));
+  applyFilters();
+  setStatus('green','已載入示範資料（可上傳自己的 Excel/CSV 或串接 Google Sheets）');
+}
+
+// ───────────────────────────────────────────
+// GOOGLE SHEETS LOADER
+// ───────────────────────────────────────────
+function openGSModal()  { document.getElementById('gsModal').classList.add('open'); }
+function closeGSModal() { document.getElementById('gsModal').classList.remove('open'); }
+
+function extractSheetId(url) {
+  const m = url.match(/\/d\/([a-zA-Z0-9-_]+)/);
+  return m ? m[1] : url.trim();
+}
+
+function formatSheetName(d) {
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+}
+
+let gsMode = 'gas';
+
+function setGsMode(mode) {
+  gsMode = mode;
+  document.getElementById('panelGas').style.display = mode === 'gas' ? '' : 'none';
+  document.getElementById('panelPub').style.display = mode === 'pub' ? '' : 'none';
+  document.getElementById('modeGas').classList.toggle('active', mode === 'gas');
+  document.getElementById('modePub').classList.toggle('active', mode === 'pub');
+  hideGsMessages();
+}
+
+function toggleGasGuide() {
+  const el = document.getElementById('gasGuide');
+  el.style.display = el.style.display === 'none' ? '' : 'none';
+}
+
+async function loadGoogleSheets() {
+  hideGsMessages();
+  setGsLoading(true);
+
+  if (gsMode === 'gas') {
+    await loadViaAppsScript();
+  } else {
+    await loadViaPubCSV();
+  }
+
+  setGsLoading(false);
+}
+
+let gasBaseUrl = '';
+let gasAllSheets = [];
+
+async function loadViaAppsScript(sheetName = '') {
+  const url = document.getElementById('gsUrl').value.trim();
+  if (!url) { showGsError('請貼上 Apps Script 部署網址'); return; }
+  if (!url.includes('script.google.com')) {
+    showGsError('網址格式不對，應為 https://script.google.com/macros/s/…/exec');
+    return;
+  }
+  gasBaseUrl = url;
+
+  try {
+    const fetchUrl = sheetName ? `${url}?sheet=${encodeURIComponent(sheetName)}` : url;
+    const resp = await fetch(fetchUrl);
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    const json = await resp.json();
+    if (json.error) throw new Error(json.error + (json.allSheets ? `（可用工作表：${json.allSheets.join('、')}）` : ''));
+    if (!json.rows || !json.rows.length) throw new Error(`工作表「${json.sheet}」沒有資料`);
+
+    // Store all sheets for selector
+    gasAllSheets = json.allSheets || [];
+
+    // Show sheet selector if multiple sheets
+    if (gasAllSheets.length > 1) {
+      renderSheetSelector(gasAllSheets, json.sheet);
+    }
+
+    // Parse rows
+    const newData = [];
+    for (const row of json.rows) {
+      const keys = Object.keys(row);
+      const colMap = detectColumns(keys.map(k => k.toLowerCase()));
+      const r = keys.map(k => row[k]);
+      const date   = parseDate(r[colMap.date] || '');
+      const type   = normalizeType(String(r[colMap.type] || ''));
+      const cat    = String(r[colMap.category] || '未分類').trim();
+      const amount = parseFloat(String(r[colMap.amount] || '0').replace(/,/g,'')) || 0;
+      const budget = parseFloat(String(r[colMap.budget] || '0').replace(/,/g,'')) || 0;
+      const note   = String(r[colMap.note] || '').trim();
+      if (!date || !amount) continue;
+      newData.push({ date, type, category: cat, amount, budget, note });
+    }
+
+    if (!newData.length) throw new Error(`「${json.sheet}」的欄位名稱無法識別，請確認標題列`);
+    allData = newData;
+    applyFilters();
+    closeGSModal();
+    // 儲存連結供重整後自動載入
+    localStorage.setItem('gas_url', gasBaseUrl);
+    localStorage.setItem('gas_mode', 'gas');
+    localStorage.setItem('gas_sheet', sheetName);
+    document.getElementById('btnDisconnect').style.display = '';
+    setStatus('green', `✅ 已從「${json.sheet}」載入 ${allData.length} 筆（共 ${gasAllSheets.length} 張工作表）— 重新整理頁面可自動同步`);
+  } catch(e) {
+    showGsError('❌ ' + e.message + '<br><br>請確認：①網址正確 ②部署時存取權選「所有人」 ③已完成授權');
+  }
+}
+
+function renderSheetSelector(sheets, currentSheet) {
+  // Remove existing selector if any
+  const existing = document.getElementById('sheetSelectorBar');
+  if (existing) existing.remove();
+
+  const bar = document.createElement('div');
+  bar.id = 'sheetSelectorBar';
+  bar.style.cssText = 'display:flex;align-items:center;gap:8px;padding:8px 28px;background:var(--bg-card2);border-bottom:1px solid var(--border);flex-wrap:wrap';
+  bar.innerHTML = `
+    <span style="font-size:.78rem;color:var(--text-secondary);white-space:nowrap">📊 切換工作表：</span>
+    <select id="sheetSelect" onchange="switchSheet(this.value)" style="background:var(--bg-input);color:var(--text-primary);border:1px solid var(--border);border-radius:5px;padding:4px 10px;font-size:.82rem">
+      ${sheets.map(s => `<option value="${s}" ${s===currentSheet?'selected':''}>${s}</option>`).join('')}
+    </select>
+    <span style="font-size:.75rem;color:var(--text-secondary)">目前：<strong style="color:var(--accent)">${currentSheet}</strong>，共 ${sheets.length} 張工作表</span>
+  `;
+
+  const filterBar = document.querySelector('.filter-bar');
+  filterBar.parentNode.insertBefore(bar, filterBar);
+}
+
+async function switchSheet(sheetName) {
+  if (!gasBaseUrl) return;
+  setStatus('yellow', `正在切換到「${sheetName}」…`);
+  setGsLoading(true);
+  localStorage.setItem('gas_sheet', sheetName);
+  await loadViaAppsScript(sheetName);
+  setGsLoading(false);
+}
+
+async function loadViaPubCSV() {
+  const rawUrl = document.getElementById('gsPubUrl').value.trim();
+  if (!rawUrl) { showGsError('請貼上「發布到網路」的 CSV 連結'); return; }
+
+  const url = rawUrl.includes('output=csv') ? rawUrl :
+    (() => {
+      const id = extractSheetId(rawUrl);
+      return id ? `https://docs.google.com/spreadsheets/d/${id}/pub?gid=0&single=true&output=csv` : null;
+    })();
+
+  if (!url) { showGsError('無法識別連結格式'); return; }
+
+  const ok = await fetchAndParseCSV(url, 'CSV 發布連結');
+  if (ok) {
+    localStorage.setItem('gas_url', url);
+    localStorage.setItem('gas_mode', 'pub');
+    localStorage.setItem('gas_sheet', '');
+  } else {
+    showGsError('❌ 載入失敗，請確認連結來自「檔案→共用→發布到網路」');
+  }
+}
+
+async function fetchAndParseCSV(url, sheetLabel) {
+  try {
+    const resp = await fetch(url);
+    if (!resp.ok) return false;
+    const text = await resp.text();
+    // Detect HTML error page (not public / not found)
+    if (!text || text.trimStart().startsWith('<!') || text.trimStart().startsWith('<h')) return false;
+    const rows = parseCSVText(text);
+    if (rows.length < 2) return false;
+    importRows(rows);
+    closeGSModal();
+    setStatus('green', `已從 Google Sheets（${sheetLabel}）載入 ${allData.length} 筆資料`);
+    return true;
+  } catch(e) {
+    return false;
+  }
+}
+
+function showGsError(msg) {
+  const el = document.getElementById('gsError');
+  el.style.display = 'block';
+  el.innerHTML = msg.replace(/\n/g,'<br>');
+}
+function hideGsMessages() {
+  document.getElementById('gsError').style.display = 'none';
+  const s = document.getElementById('gsSuccess');
+  if (s) s.style.display = 'none';
+}
+function setGsLoading(on) {
+  const btn = document.getElementById('gsLoadBtn');
+  btn.textContent = on ? '⏳ 載入中…' : '🔄 載入資料';
+  btn.disabled = on;
+}
+
+// ───────────────────────────────────────────
+// FILE UPLOAD
+// ───────────────────────────────────────────
+function handleFileUpload(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  setStatus('yellow','正在解析檔案…');
+  const reader = new FileReader();
+  if (file.name.endsWith('.csv')) {
+    reader.onload = ev => {
+      const rows = parseCSVText(ev.target.result);
+      importRows(rows);
+      setStatus('green', `已從 ${file.name} 載入 ${allData.length} 筆資料`);
+    };
+    reader.readAsText(file, 'UTF-8');
+  } else {
+    reader.onload = ev => {
+      const wb = XLSX.read(ev.target.result, { type:'array' });
+      // Pick sheet: try current month name, else first
+      const now = new Date();
+      const candidates = [formatSheetName(now), formatSheetName(new Date(now.getFullYear(),now.getMonth()-1,1))];
+      let sheetName = wb.SheetNames[0];
+      for (const c of candidates) {
+        if (wb.SheetNames.includes(c)) { sheetName = c; break; }
+      }
+      const ws = wb.Sheets[sheetName];
+      const rows = XLSX.utils.sheet_to_json(ws, { header:1, defval:'' });
+      importRows(rows);
+      setStatus('green', `已從 ${file.name}（工作表：${sheetName}）載入 ${allData.length} 筆資料`);
+    };
+    reader.readAsArrayBuffer(file);
+  }
+  e.target.value = '';
+}
+
+// ───────────────────────────────────────────
+// DATA IMPORT / PARSING
+// ───────────────────────────────────────────
+function parseCSVText(text) {
+  const lines = text.trim().split('\n');
+  return lines.map(line => {
+    // Handle quoted commas
+    const row = [];
+    let cur = '', inQ = false;
+    for (let i=0; i<line.length; i++) {
+      const ch = line[i];
+      if (ch==='"') { inQ=!inQ; }
+      else if (ch===',' && !inQ) { row.push(cur.trim()); cur=''; }
+      else { cur+=ch; }
+    }
+    row.push(cur.trim());
+    return row;
+  });
+}
+
+function importRows(rows) {
+  if (rows.length < 2) { alert('檔案內容為空或格式不符'); return; }
+
+  // Auto-detect header row
+  const header = rows[0].map(h => String(h).toLowerCase().trim());
+  const colMap = detectColumns(header);
+
+  const newData = [];
+  for (let i=1; i<rows.length; i++) {
+    const r = rows[i];
+    if (!r || r.every(c=>!c)) continue;
+
+    const date   = parseDate(r[colMap.date] || '');
+    const type   = normalizeType(r[colMap.type] || '');
+    const cat    = String(r[colMap.category] || '未分類').trim();
+    const amount = parseFloat(String(r[colMap.amount]).replace(/,/g,'')) || 0;
+    const budget = parseFloat(String(r[colMap.budget]||0).replace(/,/g,'')) || 0;
+    const note   = String(r[colMap.note] || '').trim();
+
+    if (!date || !amount) continue;
+    newData.push({ date, type, category:cat, amount, budget, note });
+  }
+
+  if (!newData.length) { alert('未能解析出有效資料，請確認欄位格式'); return; }
+  allData = newData;
+  applyFilters();
+}
+
+function detectColumns(header) {
+  const map = { date:0, type:1, category:2, amount:3, budget:4, note:5 };
+  const keys = {
+    date:     ['date','日期','time','時間'],
+    type:     ['type','類型','收支','income/expense'],
+    category: ['category','類別','cat','項目','分類'],
+    amount:   ['amount','金額','price','費用','收入','支出'],
+    budget:   ['budget','預算','planned'],
+    note:     ['note','備註','remark','說明','description'],
+  };
+  for (const [k,patterns] of Object.entries(keys)) {
+    for (let i=0; i<header.length; i++) {
+      if (patterns.some(p=>header[i].includes(p))) { map[k]=i; break; }
+    }
+  }
+  return map;
+}
+
+function parseDate(raw) {
+  if (!raw) return null;
+  const s = String(raw).trim();
+  // Excel serial number
+  if (/^\d{5}$/.test(s)) {
+    const d = new Date(Math.round((parseInt(s)-25569)*86400000));
+    return d.toISOString().slice(0,10);
+  }
+  // YYYY/MM/DD or YYYY-MM-DD
+  const m = s.match(/(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})/);
+  if (m) return `${m[1]}-${m[2].padStart(2,'0')}-${m[3].padStart(2,'0')}`;
+  // Try native
+  const d = new Date(s);
+  if (!isNaN(d)) return d.toISOString().slice(0,10);
+  return null;
+}
+
+function normalizeType(raw) {
+  const s = String(raw).trim();
+  if (/^(income|收入|in|＋|\+)$/i.test(s)) return '收入';
+  if (/^(expense|支出|out|ex|費|－|\-)$/i.test(s)) return '支出';
+  return s || '支出';
+}
+
+// ───────────────────────────────────────────
+// ADD ENTRY
+// ───────────────────────────────────────────
+function openAddModal() {
+  const today = new Date().toISOString().slice(0,10);
+  document.getElementById('entryDate').value = today;
+  document.getElementById('addModal').classList.add('open');
+  refreshCatDatalist();
+}
+function closeAddModal() { document.getElementById('addModal').classList.remove('open'); }
+
+function addEntry() {
+  const date   = document.getElementById('entryDate').value;
+  const type   = document.getElementById('entryType').value;
+  const cat    = document.getElementById('entryCat').value.trim();
+  const amount = parseFloat(document.getElementById('entryAmount').value) || 0;
+  const budget = parseFloat(document.getElementById('entryBudget').value) || 0;
+  const note   = document.getElementById('entryNote').value.trim();
+
+  if (!date || !cat || !amount) { alert('請填寫日期、類別與金額'); return; }
+  allData.push({ date, type, category:cat, amount, budget, note });
+  allData.sort((a,b)=>a.date.localeCompare(b.date));
+  closeAddModal();
+  applyFilters();
+  setStatus('green','已新增記錄並更新圖表');
+}
+
+function deleteEntry(idx) {
+  if (!confirm('確定刪除此筆資料？')) return;
+  // idx refers to filteredData index
+  const entry = filteredData[idx];
+  const pos = allData.indexOf(entry);
+  if (pos !== -1) allData.splice(pos, 1);
+  applyFilters();
+}
+
+function refreshCatDatalist() {
+  const cats = [...new Set(allData.map(d=>d.category))];
+  document.getElementById('catList').innerHTML = cats.map(c=>`<option value="${c}">`).join('');
+}
+
+// ───────────────────────────────────────────
+// FILTERS
+// ───────────────────────────────────────────
+function populateFilters() {
+  const years = [...new Set(allData.map(d=>d.date.slice(0,4)))].sort();
+  const cats  = [...new Set(allData.map(d=>d.category))].sort();
+  const fYear = document.getElementById('fYear');
+  const fCat  = document.getElementById('fCat');
+  const curYear = fYear.value, curCat = fCat.value;
+  fYear.innerHTML = '<option value="">全部</option>' + years.map(y=>`<option value="${y}">${y}</option>`).join('');
+  fCat.innerHTML  = '<option value="">全部</option>' + cats.map(c=>`<option value="${c}">${c}</option>`).join('');
+  if (curYear) fYear.value = curYear;
+  if (curCat)  fCat.value  = curCat;
+}
+
+function applyFilters() {
+  populateFilters();
+  const fYear  = document.getElementById('fYear').value;
+  const fMonth = document.getElementById('fMonth').value;
+  const fCat   = document.getElementById('fCat').value;
+  const fType  = document.getElementById('fType').value;
+  const fOver  = document.getElementById('fOver').value;
+  const search = document.getElementById('searchInput').value.toLowerCase();
+
+  filteredData = allData.filter(d => {
+    const [dy, dm] = d.date.split('-');
+    if (fYear  && dy !== fYear) return false;
+    if (fMonth && dm !== fMonth.padStart(2,'0')) return false;
+    if (fCat   && d.category !== fCat) return false;
+    if (fType  && d.type !== fType) return false;
+    const over = d.budget > 0 && d.type==='支出' && d.amount > d.budget;
+    if (fOver === 'yes' && !over) return false;
+    if (fOver === 'no'  &&  over) return false;
+    if (search && !d.category.toLowerCase().includes(search) && !d.note.toLowerCase().includes(search)) return false;
+    return true;
+  });
+
+  currentPage = 1;
+  sortTable(sortKey, true);
+  renderKPI();
+  renderGauges();
+  renderBarChart();
+  renderDonutChart();
+  renderLineChart();
+  document.getElementById('lastUpdate').textContent = new Date().toLocaleTimeString('zh-TW');
+}
+
+function resetFilters() {
+  ['fYear','fMonth','fCat','fType','fOver'].forEach(id=>document.getElementById(id).value='');
+  document.getElementById('searchInput').value='';
+  applyFilters();
+}
+
+// ───────────────────────────────────────────
+// TABLE
+// ───────────────────────────────────────────
+function sortTable(key, keepDir=false) {
+  if (!keepDir) { sortDir = (sortKey===key) ? -sortDir : -1; }
+  sortKey = key;
+  filteredData.sort((a,b) => {
+    let va = a[key], vb = b[key];
+    if (key==='amount'||key==='budget') { va=+va; vb=+vb; }
+    if (key==='status') { va = (a.budget>0&&a.amount>a.budget)?1:0; vb=(b.budget>0&&b.amount>b.budget)?1:0; }
+    return va > vb ? sortDir : va < vb ? -sortDir : 0;
+  });
+  renderTable();
+}
+
+function renderTable() {
+  const tbody = document.getElementById('tableBody');
+  const empty = document.getElementById('emptyState');
+  if (!filteredData.length) {
+    tbody.innerHTML = '';
+    empty.style.display = 'block';
+    document.getElementById('pagination').innerHTML = '';
+    return;
+  }
+  empty.style.display = 'none';
+
+  const start = (currentPage-1)*PAGE_SIZE;
+  const page  = filteredData.slice(start, start+PAGE_SIZE);
+
+  tbody.innerHTML = page.map((d, i) => {
+    const over = d.budget > 0 && d.type==='支出' && d.amount > d.budget;
+    const statusTag = d.type==='收入'
+      ? `<span class="tag tag-income">收入</span>`
+      : over
+        ? `<span class="tag tag-over">超支</span>`
+        : `<span class="tag tag-ok">正常</span>`;
+    const typeTag = `<span class="tag ${d.type==='收入'?'tag-income':'tag-expense'}">${d.type}</span>`;
+    const amtColor = d.type==='收入' ? 'var(--green)' : over ? 'var(--red)' : 'var(--text-primary)';
+    const realIdx = start + i;
+    return `<tr>
+      <td>${d.date}</td>
+      <td>${typeTag}</td>
+      <td>${d.category}</td>
+      <td style="color:${amtColor};font-weight:600">${fmt(d.amount)}</td>
+      <td style="color:var(--text-secondary)">${d.budget?fmt(d.budget):'—'}</td>
+      <td>${statusTag}</td>
+      <td style="color:var(--text-secondary)">${d.note||'—'}</td>
+      <td><button class="btn btn-sm btn-danger" onclick="deleteEntry(${realIdx})">刪除</button></td>
+    </tr>`;
+  }).join('');
+
+  renderPagination();
+}
+
+function renderPagination() {
+  const total = Math.ceil(filteredData.length / PAGE_SIZE);
+  const pag = document.getElementById('pagination');
+  if (total <= 1) { pag.innerHTML = ''; return; }
+  let html = `<span class="page-info">共 ${filteredData.length} 筆</span>`;
+  if (currentPage > 1) html += `<button class="page-btn" onclick="goPage(${currentPage-1})">‹</button>`;
+  for (let p=1; p<=total; p++) {
+    if (p===1 || p===total || Math.abs(p-currentPage)<=1) {
+      html += `<button class="page-btn ${p===currentPage?'active':''}" onclick="goPage(${p})">${p}</button>`;
+    } else if (Math.abs(p-currentPage)===2) html += `<span style="color:var(--text-secondary)">…</span>`;
+  }
+  if (currentPage < total) html += `<button class="page-btn" onclick="goPage(${currentPage+1})">›</button>`;
+  pag.innerHTML = html;
+}
+
+function goPage(p) { currentPage=p; renderTable(); }
+
+// ───────────────────────────────────────────
+// KPI
+// ───────────────────────────────────────────
+function renderKPI() {
+  const income  = filteredData.filter(d=>d.type==='收入').reduce((s,d)=>s+d.amount,0);
+  const expense = filteredData.filter(d=>d.type==='支出').reduce((s,d)=>s+d.amount,0);
+  const balance = income - expense;
+  const totalBudget = filteredData.filter(d=>d.type==='支出'&&d.budget>0).reduce((s,d)=>s+d.budget,0);
+
+  // Over-budget by category
+  const catExpense = {}, catBudget = {};
+  filteredData.filter(d=>d.type==='支出').forEach(d=>{
+    catExpense[d.category]=(catExpense[d.category]||0)+d.amount;
+    if (d.budget) catBudget[d.category]=(catBudget[d.category]||0)+d.budget;
+  });
+  const overCats = Object.keys(catBudget).filter(c=>catBudget[c]>0&&catExpense[c]>catBudget[c]).length;
+
+  document.getElementById('kpiIncome').textContent   = fmt(income);
+  document.getElementById('kpiIncomeCount').textContent = filteredData.filter(d=>d.type==='收入').length + ' 筆';
+  document.getElementById('kpiExpense').textContent  = fmt(expense);
+  document.getElementById('kpiExpenseCount').textContent = filteredData.filter(d=>d.type==='支出').length + ' 筆';
+  document.getElementById('kpiBalance').textContent  = (balance>=0?'+':'')+fmt(balance);
+  document.getElementById('kpiBalance').style.color  = balance>=0 ? 'var(--green)' : 'var(--red)';
+  document.getElementById('kpiOver').textContent     = overCats;
+  document.getElementById('kpiBudget').textContent   = fmt(totalBudget);
+}
+
+// ───────────────────────────────────────────
+// GAUGES (doughnut half)
+// ───────────────────────────────────────────
+function makeGauge(canvasId, pct, color) {
+  const el = document.getElementById(canvasId);
+  const ctx = el.getContext('2d');
+  const clamped = Math.min(Math.max(pct,0),100);
+  const data = [clamped, 100-clamped];
+
+  if (window['__gauge_'+canvasId]) {
+    window['__gauge_'+canvasId].data.datasets[0].data = data;
+    window['__gauge_'+canvasId].data.datasets[0].backgroundColor = [color, '#2e3250'];
+    window['__gauge_'+canvasId].update();
+    return;
+  }
+  window['__gauge_'+canvasId] = new Chart(ctx, {
+    type: 'doughnut',
+    data: { datasets:[{ data, backgroundColor:[color,'#2e3250'], borderWidth:0, circumference:180, rotation:270 }] },
+    options: { cutout:'72%', responsive:false, plugins:{ legend:{display:false}, tooltip:{enabled:false} } }
+  });
+}
+
+function renderGauges() {
+  const income  = filteredData.filter(d=>d.type==='收入').reduce((s,d)=>s+d.amount,0);
+  const expense = filteredData.filter(d=>d.type==='支出').reduce((s,d)=>s+d.amount,0);
+  const totalBudget = filteredData.filter(d=>d.type==='支出'&&d.budget>0).reduce((s,d)=>s+d.budget,0);
+
+  const budgetPct  = totalBudget > 0 ? Math.round(expense/totalBudget*100) : 0;
+  const ratioPct   = income > 0 ? Math.round(expense/income*100) : 0;
+  const savingsPct = income > 0 ? Math.max(0, Math.round((income-expense)/income*100)) : 0;
+
+  const budgetColor = budgetPct>90?'var(--red)':budgetPct>70?'var(--yellow)':'var(--green)';
+  const ratioColor  = ratioPct>90?'var(--red)':ratioPct>70?'var(--yellow)':'var(--accent)';
+
+  makeGauge('gaugeBudget',  budgetPct,  budgetColor);
+  makeGauge('gaugeRatio',   ratioPct,   ratioColor);
+  makeGauge('gaugeSavings', savingsPct, 'var(--accent2)');
+
+  document.getElementById('gaugeBudgetVal').textContent  = budgetPct + '%';
+  document.getElementById('gaugeBudgetVal').style.color  = budgetColor;
+  document.getElementById('gaugeRatioVal').textContent   = ratioPct + '%';
+  document.getElementById('gaugeRatioVal').style.color   = ratioColor;
+  document.getElementById('gaugeSavingsVal').textContent = savingsPct + '%';
+}
+
+// ───────────────────────────────────────────
+// BAR CHART (category budget vs expense)
+// ───────────────────────────────────────────
+function renderBarChart() {
+  const catData = {};
+  filteredData.filter(d=>d.type==='支出').forEach(d=>{
+    if (!catData[d.category]) catData[d.category]={expense:0,budget:0};
+    catData[d.category].expense += d.amount;
+    if (d.budget) catData[d.category].budget += d.budget;
+  });
+  const labels   = Object.keys(catData);
+  const expenses = labels.map(c=>catData[c].expense);
+  const budgets  = labels.map(c=>catData[c].budget);
+  const barColors= expenses.map((e,i)=> budgets[i]>0&&e>budgets[i] ? '#ff5e7d' : '#4f8ef7');
+
+  const ctx = document.getElementById('barChart').getContext('2d');
+  if (chartBar) { chartBar.destroy(); }
+  chartBar = new Chart(ctx, {
+    type:'bar',
+    data:{
+      labels,
+      datasets:[
+        { label:'實際支出', data:expenses, backgroundColor:barColors, borderRadius:4 },
+        { label:'預算', data:budgets, backgroundColor:'rgba(124,92,252,0.4)', borderRadius:4 }
+      ]
+    },
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      plugins:{ legend:{ labels:{ color:'#8a90a8', font:{size:11} } }, tooltip:{ callbacks:{ label:c=>' '+fmt(c.raw) } } },
+      scales:{
+        x:{ ticks:{color:'#8a90a8',font:{size:10}}, grid:{color:'#2e3250'} },
+        y:{ ticks:{color:'#8a90a8',font:{size:10}, callback:v=>fmtK(v)}, grid:{color:'#2e3250'} }
+      }
+    }
+  });
+}
+
+// ───────────────────────────────────────────
+// DONUT CHART (expense breakdown)
+// ───────────────────────────────────────────
+function renderDonutChart() {
+  const catAmt = {};
+  filteredData.filter(d=>d.type==='支出').forEach(d=>{
+    catAmt[d.category]=(catAmt[d.category]||0)+d.amount;
+  });
+  const labels = Object.keys(catAmt);
+  const vals   = labels.map(k=>catAmt[k]);
+  const COLORS = ['#4f8ef7','#7c5cfc','#22c993','#f9c84a','#ff5e7d','#38bdf8','#fb923c','#a78bfa','#34d399','#f472b6'];
+
+  const ctx = document.getElementById('donutChart').getContext('2d');
+  const total = vals.reduce((s,v)=>s+v, 0);
+
+  if (chartDonut) { chartDonut.destroy(); }
+  chartDonut = new Chart(ctx, {
+    type:'doughnut',
+    data:{ labels, datasets:[{ data:vals, backgroundColor:COLORS, borderWidth:2, borderColor:'#0f1117' }] },
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      plugins:{
+        legend:{
+          position:'right',
+          labels:{
+            color:'#8a90a8', font:{size:10}, boxWidth:10, padding:8,
+            generateLabels: chart => {
+              const data = chart.data;
+              return data.labels.map((label, i) => {
+                const val  = data.datasets[0].data[i];
+                const pct  = total > 0 ? (val/total*100).toFixed(1) : 0;
+                return {
+                  text: `${label}  ${pct}%`,
+                  fillStyle: COLORS[i % COLORS.length],
+                  strokeStyle: COLORS[i % COLORS.length],
+                  index: i,
+                  hidden: false,
+                };
+              });
+            }
+          }
+        },
+        tooltip:{
+          callbacks:{
+            label: c => {
+              const pct = total > 0 ? (c.raw/total*100).toFixed(1) : 0;
+              return ` ${c.label}：${fmt(c.raw)}  (${pct}%)`;
+            }
+          }
+        },
+        datalabels:{
+          color:'#fff',
+          font:{ size:10, weight:'bold' },
+          formatter:(val, ctx) => {
+            const pct = total > 0 ? (val/total*100) : 0;
+            return pct >= 5 ? pct.toFixed(1)+'%' : '';
+          },
+          anchor:'center', align:'center',
+          textShadowBlur:4, textShadowColor:'rgba(0,0,0,.6)'
+        }
+      }
+    },
+    plugins:[ChartDataLabels]
+  });
+}
+
+// ───────────────────────────────────────────
+// LINE CHART (monthly trend)
+// ───────────────────────────────────────────
+function renderLineChart() {
+  const monthly = {};
+  allData.forEach(d => {
+    const ym = d.date.slice(0,7);
+    if (!monthly[ym]) monthly[ym]={income:0,expense:0};
+    if (d.type==='收入') monthly[ym].income += d.amount;
+    else monthly[ym].expense += d.amount;
+  });
+  const sorted = Object.keys(monthly).sort();
+  const income  = sorted.map(k=>monthly[k].income);
+  const expense = sorted.map(k=>monthly[k].expense);
+
+  const ctx = document.getElementById('lineChart').getContext('2d');
+  if (chartLine) { chartLine.destroy(); }
+  chartLine = new Chart(ctx, {
+    type:'line',
+    data:{
+      labels: sorted,
+      datasets:[
+        { label:'收入', data:income,  borderColor:'#22c993', backgroundColor:'rgba(34,201,147,.1)', tension:.4, fill:true, pointRadius:4 },
+        { label:'支出', data:expense, borderColor:'#ff5e7d', backgroundColor:'rgba(255,94,125,.1)', tension:.4, fill:true, pointRadius:4 }
+      ]
+    },
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      plugins:{ legend:{ labels:{ color:'#8a90a8', font:{size:11} } }, tooltip:{ callbacks:{ label:c=>' '+fmt(c.raw) } } },
+      scales:{
+        x:{ ticks:{color:'#8a90a8',font:{size:10}}, grid:{color:'#2e3250'} },
+        y:{ ticks:{color:'#8a90a8',font:{size:10}, callback:v=>fmtK(v)}, grid:{color:'#2e3250'} }
+      }
+    }
+  });
+}
+
+// ───────────────────────────────────────────
+// STATUS
+// ───────────────────────────────────────────
+function setStatus(color, msg) {
+  const map = { green:'dot-green', yellow:'dot-yellow', red:'dot-red', grey:'dot-grey' };
+  const dot = document.getElementById('statusDot');
+  dot.className = 'status-dot';
+  dot.style.background = color==='green'?'var(--green)':color==='yellow'?'var(--yellow)':color==='red'?'var(--red)':'var(--text-secondary)';
+  document.getElementById('statusText').textContent = msg;
+}
+
+// ───────────────────────────────────────────
+// UTILS
+// ───────────────────────────────────────────
+function fmt(n) {
+  return '$' + Math.round(n).toLocaleString('zh-TW');
+}
+function fmtK(n) {
+  if (Math.abs(n)>=10000) return (n/10000).toFixed(0)+'萬';
+  if (Math.abs(n)>=1000)  return (n/1000).toFixed(1)+'K';
+  return n;
+}
+
+// ───────────────────────────────────────────
+// INIT
+// ───────────────────────────────────────────
+Chart.defaults.color = '#8a90a8';
+Chart.defaults.font.family = 'Segoe UI, PingFang TC, Microsoft JhengHei, sans-serif';
+
+window.addEventListener('DOMContentLoaded', () => {
+  const savedUrl  = localStorage.getItem('gas_url');
+  const savedMode = localStorage.getItem('gas_mode') || 'gas';
+  const savedSheet = localStorage.getItem('gas_sheet') || '';
+
+  if (savedUrl) {
+    // 有儲存的連結 → 自動重新載入
+    setStatus('yellow', '正在自動重新載入上次的資料…');
+    gsMode = savedMode;
+
+    if (savedMode === 'gas') {
+      document.getElementById('gsUrl').value = savedUrl;
+      gasBaseUrl = savedUrl;
+      loadViaAppsScript(savedSheet).then(() => setGsLoading(false));
+    } else {
+      document.getElementById('gsPubUrl').value = savedUrl;
+      loadViaPubCSV();
+    }
+  } else {
+    loadDemoData();
+  }
+});
+
+function onPermCheck() {
+  hideGsMessages();
+}
+
+// ───────────────────────────────────────────
+// ASSET DATA
+// ───────────────────────────────────────────
+let assetData = [
+  { type:'流動資產', category:'現金',   name:'台新活存',   amount:280000, note:'' },
+  { type:'流動資產', category:'現金',   name:'郵局帳戶',   amount:95000,  note:'' },
+  { type:'流動資產', category:'定存',   name:'國泰6個月定存', amount:200000, note:'年利率1.8%' },
+  { type:'投資資產', category:'股票',   name:'台積電(2330)', amount:450000, note:'300股' },
+  { type:'投資資產', category:'ETF',    name:'00878',      amount:180000, note:'存股' },
+  { type:'投資資產', category:'基金',   name:'美國科技基金', amount:120000, note:'' },
+  { type:'固定資產', category:'不動產', name:'台北房屋',    amount:8500000,note:'自住' },
+  { type:'固定資產', category:'車輛',   name:'Toyota Corolla', amount:450000, note:'2022年' },
+  { type:'負債',    category:'房貸',   name:'國泰房貸',    amount:5200000,note:'剩20年' },
+  { type:'負債',    category:'信用卡', name:'玉山卡帳單',  amount:28000,  note:'本月' },
+  { type:'負債',    category:'車貸',   name:'Toyota車貸',  amount:180000, note:'剩2年' },
+];
+
+// ───────────────────────────────────────────
+// TAB SWITCHING
+// ───────────────────────────────────────────
+let currentTab = 'income';
+
+function switchTab(tab) {
+  currentTab = tab;
+  document.getElementById('tabIncome').classList.toggle('active', tab === 'income');
+  document.getElementById('tabAsset').classList.toggle('active', tab === 'asset');
+
+  const incomeEls = [
+    document.querySelector('.filter-bar'),
+    document.querySelector('.main'),
+  ];
+  const assetSection = document.getElementById('assetSection');
+
+  if (tab === 'income') {
+    incomeEls.forEach(el => { if(el) el.style.display = ''; });
+    assetSection.style.display = 'none';
+  } else {
+    incomeEls.forEach(el => { if(el) el.style.display = 'none'; });
+    assetSection.style.display = '';
+    renderAssetDashboard();
+  }
+}
+
+// ───────────────────────────────────────────
+// ASSET DASHBOARD RENDER
+// ───────────────────────────────────────────
+function renderAssetDashboard() {
+  // If GAS is connected, fetch live asset data
+  if (gasBaseUrl) {
+    loadAssetFromGAS();
+  } else {
+    renderAssetKPI();
+    renderAssetGauges();
+    renderAssetDonut();
+    renderAssetBar();
+    renderAssetTable();
+  }
+}
+
+async function loadAssetFromGAS() {
+  setStatus('yellow', '正在載入資產負債資料…');
+  try {
+    const url = gasBaseUrl + '?mode=asset';
+    const resp = await fetch(url);
+    if (!resp.ok) throw new Error('HTTP ' + resp.status);
+    const json = await resp.json();
+    if (json.error) throw new Error(json.error);
+    if (!json.rows || !json.rows.length) throw new Error('資產負債工作表沒有資料');
+
+    // Parse rows into assetData format
+    const newAsset = [];
+    for (const row of json.rows) {
+      const keys = Object.keys(row);
+      // Map by common header names (strip parentheses from key before matching)
+      const normalize = s => String(s).replace(/[（(）)【】\s]/g,'').toLowerCase();
+      const find = (...names) => {
+        for (const k of keys) {
+          const nk = normalize(k);
+          if (names.some(n => nk.includes(normalize(n)))) return row[k];
+        }
+        return '';
+      };
+      const type   = String(find('類型','type') || '').trim();
+      const cat    = String(find('類別','category','cat') || '').trim();
+      const name   = String(find('名稱','name','項目') || '').trim();
+      const rawAmt = find('金額','amount','price','元');
+      const amount = parseFloat(String(rawAmt).replace(/,/g,'')) || 0;
+      const note   = String(find('備註','note','remark','說明') || '').trim();
+
+      const validTypes = ['流動資產','投資資產','固定資產','負債'];
+      if (!validTypes.includes(type) || !amount) continue;
+      newAsset.push({ type, category: cat, name, amount, note });
+    }
+
+    if (!newAsset.length) throw new Error('無法解析資產負債資料，請確認欄位名稱（類型/類別/名稱/金額/備註）');
+
+    assetData = newAsset;
+    setStatus('green', `✅ 資產負債已從「${json.sheet}」載入 ${assetData.length} 筆`);
+  } catch(e) {
+    setStatus('red', '資產負債載入失敗：' + e.message);
+  }
+
+  renderAssetKPI();
+  renderAssetGauges();
+  renderAssetDonut();
+  renderAssetBar();
+  renderAssetTable();
+}
+
+function assetSum(type) {
+  return assetData.filter(d => d.type === type).reduce((s,d) => s + d.amount, 0);
+}
+
+function renderAssetKPI() {
+  const liquid  = assetSum('流動資產');
+  const invest  = assetSum('投資資產');
+  const fixed   = assetSum('固定資產');
+  const total   = liquid + invest + fixed;
+  const debt    = assetSum('負債');
+  const net     = total - debt;
+  const pct     = v => total > 0 ? (v/total*100).toFixed(1)+'%' : '0%';
+
+  document.getElementById('aKpiTotal').textContent      = fmt(total);
+  document.getElementById('aKpiLiquid').textContent     = fmt(liquid);
+  document.getElementById('aKpiLiquidPct').textContent  = '佔總資產 ' + pct(liquid);
+  document.getElementById('aKpiInvest').textContent     = fmt(invest);
+  document.getElementById('aKpiInvestPct').textContent  = '佔總資產 ' + pct(invest);
+  document.getElementById('aKpiFixed').textContent      = fmt(fixed);
+  document.getElementById('aKpiFixedPct').textContent   = '佔總資產 ' + pct(fixed);
+  document.getElementById('aKpiDebt').textContent       = fmt(debt);
+  document.getElementById('aKpiDebtSub').textContent    = assetData.filter(d=>d.type==='負債').length + ' 項負債';
+  document.getElementById('aKpiNet').textContent        = (net>=0?'+':'') + fmt(net);
+  document.getElementById('aKpiNet').style.color        = net >= 0 ? 'var(--green)' : 'var(--red)';
+}
+
+function renderAssetGauges() {
+  const liquid = assetSum('流動資產');
+  const invest = assetSum('投資資產');
+  const total  = liquid + assetSum('固定資產') + invest;
+  const debt   = assetSum('負債');
+
+  const debtRatio    = total > 0 ? Math.round(debt/total*100) : 0;
+  const liquidRatio  = debt  > 0 ? Math.min(Math.round(liquid/debt*100), 100) : 100;
+  const investRatio  = total > 0 ? Math.round(invest/total*100) : 0;
+
+  const debtColor = debtRatio > 60 ? 'var(--red)' : debtRatio > 40 ? 'var(--yellow)' : 'var(--green)';
+  makeGauge('gaugeDebtRatio',    debtRatio,   debtColor);
+  makeGauge('gaugeLiquidRatio',  liquidRatio, 'var(--accent)');
+  makeGauge('gaugeInvestRatio',  investRatio, 'var(--accent2)');
+
+  document.getElementById('gaugeDebtRatioVal').textContent   = debtRatio + '%';
+  document.getElementById('gaugeDebtRatioVal').style.color   = debtColor;
+  document.getElementById('gaugeLiquidRatioVal').textContent = liquidRatio + '%';
+  document.getElementById('gaugeInvestRatioVal').textContent = investRatio + '%';
+}
+
+let chartAssetDonut, chartAssetBar;
+
+function renderAssetDonut() {
+  const liquid = assetSum('流動資產');
+  const invest = assetSum('投資資產');
+  const fixed  = assetSum('固定資產');
+  const total  = liquid + invest + fixed;
+  const vals   = [liquid, invest, fixed];
+  const labels = ['流動資產','投資資產','固定資產'];
+  const COLORS = ['#4f8ef7','#7c5cfc','#f9c84a'];
+
+  const ctx = document.getElementById('assetDonut').getContext('2d');
+  if (chartAssetDonut) chartAssetDonut.destroy();
+  chartAssetDonut = new Chart(ctx, {
+    type: 'doughnut',
+    data: { labels, datasets:[{ data:vals, backgroundColor:COLORS, borderWidth:2, borderColor:'#0f1117' }] },
+    options: {
+      responsive:true, maintainAspectRatio:false,
+      plugins:{
+        legend:{ position:'right', labels:{ color:'#8a90a8', font:{size:11}, boxWidth:12,
+          generateLabels: chart => labels.map((l,i) => ({
+            text: `${l}  ${total>0?(vals[i]/total*100).toFixed(1):0}%`,
+            fillStyle: COLORS[i], strokeStyle: COLORS[i], index:i, hidden:false
+          }))
+        }},
+        tooltip:{ callbacks:{ label: c => ` ${c.label}：${fmt(c.raw)}  (${total>0?(c.raw/total*100).toFixed(1):0}%)` }},
+        datalabels:{
+          color:'#fff', font:{size:11,weight:'bold'},
+          formatter:(v) => total>0&&(v/total*100)>=5 ? (v/total*100).toFixed(1)+'%' : '',
+          anchor:'center', align:'center',
+          textShadowBlur:4, textShadowColor:'rgba(0,0,0,.6)'
+        }
+      }
+    },
+    plugins:[ChartDataLabels]
+  });
+}
+
+function renderAssetBar() {
+  const categories = ['流動資產','投資資產','固定資產','負債'];
+  const values = categories.map(c => assetSum(c));
+  const colors = ['#4f8ef7','#7c5cfc','#f9c84a','#ff5e7d'];
+
+  const ctx = document.getElementById('assetBar').getContext('2d');
+  if (chartAssetBar) chartAssetBar.destroy();
+  chartAssetBar = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: categories,
+      datasets:[{ label:'金額', data:values, backgroundColor:colors, borderRadius:6 }]
+    },
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      plugins:{
+        legend:{display:false},
+        tooltip:{ callbacks:{ label: c => ' ' + fmt(c.raw) }},
+        datalabels:{
+          color:'#e8ecf4', font:{size:10,weight:'bold'}, anchor:'end', align:'top',
+          formatter: v => fmtK(v)
+        }
+      },
+      scales:{
+        x:{ ticks:{color:'#8a90a8',font:{size:11}}, grid:{color:'#2e3250'} },
+        y:{ ticks:{color:'#8a90a8',font:{size:10}, callback:v=>fmtK(v)}, grid:{color:'#2e3250'} }
+      }
+    },
+    plugins:[ChartDataLabels]
+  });
+}
+
+function renderAssetTable() {
+  const filter = document.getElementById('aFilterType').value;
+  const data = filter ? assetData.filter(d => d.type === filter) : assetData;
+  const tbody = document.getElementById('assetTableBody');
+
+  const typeColor = {
+    '流動資產':'var(--accent)', '投資資產':'var(--accent2)',
+    '固定資產':'var(--yellow)', '負債':'var(--red)'
+  };
+  const typeBg = {
+    '流動資產':'rgba(79,142,247,.15)', '投資資產':'rgba(124,92,252,.15)',
+    '固定資產':'rgba(249,200,74,.15)', '負債':'rgba(255,94,125,.15)'
+  };
+
+  tbody.innerHTML = data.map((d, i) => `
+    <tr>
+      <td><span class="tag" style="background:${typeBg[d.type]};color:${typeColor[d.type]}">${d.type}</span></td>
+      <td>${d.category}</td>
+      <td style="font-weight:600">${d.name}</td>
+      <td style="color:${d.type==='負債'?'var(--red)':'var(--green)'};font-weight:600">${fmt(d.amount)}</td>
+      <td style="color:var(--text-secondary)">${d.note||'—'}</td>
+      <td><button class="btn btn-sm btn-danger" onclick="deleteAssetEntry(${i})">刪除</button></td>
+    </tr>
+  `).join('');
+}
+
+// ───────────────────────────────────────────
+// ASSET ENTRY CRUD
+// ───────────────────────────────────────────
+function openAddAssetModal()  { document.getElementById('addAssetModal').classList.add('open'); }
+function closeAddAssetModal() { document.getElementById('addAssetModal').classList.remove('open'); }
+
+function addAssetEntry() {
+  const type   = document.getElementById('aEntryType').value;
+  const cat    = document.getElementById('aEntryCat').value.trim();
+  const name   = document.getElementById('aEntryName').value.trim();
+  const amount = parseFloat(document.getElementById('aEntryAmount').value) || 0;
+  const note   = document.getElementById('aEntryNote').value.trim();
+  if (!cat || !name || !amount) { alert('請填寫類別、名稱與金額'); return; }
+  assetData.push({ type, category:cat, name, amount, note });
+  closeAddAssetModal();
+  renderAssetDashboard();
+}
+
+function deleteAssetEntry(idx) {
+  const filter = document.getElementById('aFilterType').value;
+  const visible = filter ? assetData.filter(d=>d.type===filter) : assetData;
+  const entry = visible[idx];
+  const pos = assetData.indexOf(entry);
+  if (pos !== -1) assetData.splice(pos, 1);
+  renderAssetDashboard();
+}
+
+function disconnectGS() {
+  if (!confirm('確定中斷 Google Sheets 連線並清除記憶？')) return;
+  localStorage.removeItem('gas_url');
+  localStorage.removeItem('gas_mode');
+  localStorage.removeItem('gas_sheet');
+  gasBaseUrl = '';
+  gasAllSheets = [];
+  const sel = document.getElementById('sheetSelectorBar');
+  if (sel) sel.remove();
+  document.getElementById('btnDisconnect').style.display = 'none';
+  loadDemoData();
+  setStatus('grey', '已中斷連線，顯示示範資料');
+}
+
+// Close modals on backdrop click
+document.getElementById('addModal').addEventListener('click', e => { if(e.target===e.currentTarget) closeAddModal(); });
+document.getElementById('gsModal').addEventListener('click',  e => { if(e.target===e.currentTarget) closeGSModal(); });
+document.getElementById('addAssetModal').addEventListener('click', e => { if(e.target===e.currentTarget) closeAddAssetModal(); });
+</script>
+</body>
+</html>
